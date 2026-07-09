@@ -1,14 +1,21 @@
 package nl.jovmit.countries.coroutinespractice
 
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-@OptIn(ExperimentalCoroutinesApi::class)
+@OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 class SearchFlowTest {
 
     class SearchRepository(
@@ -25,7 +32,13 @@ class SearchFlowTest {
          * - cancel old searches when new query arrives
          */
         fun searchResults(queryFlow: Flow<String>): Flow<List<SearchResult>> {
-            TODO("Use debounce, filter, distinctUntilChanged, flatMapLatest")
+            return queryFlow
+                .debounce(300)
+                .filter { it.length >= 3 }
+                .distinctUntilChanged()
+                .flatMapLatest { query ->
+                    flow { emit(api.search(query)) }
+                }
         }
 
         /**
@@ -38,7 +51,22 @@ class SearchFlowTest {
          * - failure => Error
          */
         fun searchUiState(queryFlow: Flow<String>): Flow<SearchUiState> {
-            TODO("Use debounce, distinctUntilChanged, flatMapLatest, catch")
+            return queryFlow
+                .debounce(300)
+                .distinctUntilChanged()
+                .flatMapLatest { query ->
+                    if (query.length < 3) {
+                        flowOf(SearchUiState.Idle)
+                    } else {
+                        flow {
+                            emit(SearchUiState.Loading)
+                            val results = api.search(query)
+                            emit(SearchUiState.Success(results))
+                        }.catch { error ->
+                            emit(SearchUiState.Error(error.message ?: "Unknown error"))
+                        }
+                    }
+                }
         }
     }
 

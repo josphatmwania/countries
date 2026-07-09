@@ -2,6 +2,7 @@ package nl.jovmit.countries.coroutinespractice
 
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
@@ -18,7 +19,7 @@ class FlowBasicsTest {
          * Expose the user stream from the DAO.
          */
         fun observeUser(userId: String): Flow<User> {
-            TODO("Return dao.observeUser(userId)")
+            return dao.observeUser(userId)
         }
 
         /**
@@ -26,7 +27,9 @@ class FlowBasicsTest {
          * Map User into UserUiModel.
          */
         fun observeUserUiModel(userId: String): Flow<UserUiModel> {
-            TODO("Use map")
+            return observeUser(userId).map { user ->
+                UserUiModel(title = user.name, subtitle = user.email)
+            }
         }
     }
 
