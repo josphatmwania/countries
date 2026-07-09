@@ -29,8 +29,17 @@ class CallbackToCoroutineTest {
      * - onError resumes with exception
      * - coroutine cancellation calls HttpCall.cancel()
      */
-    private suspend fun <T> HttpCall<T>.await(): T {
-        TODO("Implement using suspendCancellableCoroutine")
+    private suspend fun <T> HttpCall<T>.await(): T = suspendCancellableCoroutine { continuation ->
+        enqueue(object : Callback<T> {
+            override fun onSuccess(value: T) {
+                continuation.resume(value)
+            }
+
+            override fun onError(error: Throwable) {
+                continuation.resumeWithException(error)
+            }
+        })
+        continuation.invokeOnCancellation { cancel() }
     }
 
     @Test

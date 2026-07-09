@@ -1,37 +1,47 @@
 package nl.jovmit.countries.coroutinespractice
 
+import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.supervisorScope
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.test.currentTime
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 class SequentialAndParallelCoroutinesTest {
 
-    private suspend fun <T> HttpCall<T>.await(): T {
-        // You can copy your solution from 01_CallbackToCoroutineTest.
-        TODO("Implement await()")
+    private suspend fun <T> HttpCall<T>.await(): T = suspendCancellableCoroutine { continuation ->
+        enqueue(object : Callback<T> {
+            override fun onSuccess(value: T) {
+                continuation.resume(value)
+            }
+
+            override fun onError(error: Throwable) {
+                continuation.resumeWithException(error)
+            }
+        })
+        continuation.invokeOnCancellation { cancel() }
     }
 
-    class UserRepository(
+    inner class UserRepository(
         private val api: UserApi
     ) {
-        suspend fun getUser(userId: String): User {
-            TODO("Call api.getUser(userId).await()")
-        }
+        suspend fun getUser(userId: String): User = api.getUser(userId).await()
 
-        suspend fun getPosts(userId: String): List<Post> {
-            TODO("Call api.getPosts(userId).await()")
-        }
+        suspend fun getPosts(userId: String): List<Post> = api.getPosts(userId).await()
 
         /**
          * Exercise 2:
          * Load user and posts sequentially.
          */
         suspend fun loadProfileSequentially(userId: String): UserProfile {
-            TODO("Load user, then posts")
+            val user = getUser(userId)
+            val posts = getPosts(userId)
+            return UserProfile(user, posts)
         }
 
         /**
@@ -39,7 +49,9 @@ class SequentialAndParallelCoroutinesTest {
          * Load user and posts in parallel using async.
          */
         suspend fun loadProfileInParallel(userId: String): UserProfile = coroutineScope {
-            TODO("Load user and posts in parallel")
+            val user = async { getUser(userId) }
+            val posts = async { getPosts(userId) }
+            UserProfile(user.await(), posts.await())
         }
 
         /**
@@ -51,7 +63,11 @@ class SequentialAndParallelCoroutinesTest {
          * If user fails, throw.
          */
         suspend fun loadProfileSafely(userId: String): UserProfile = supervisorScope {
-            TODO("Use supervisorScope and runCatching for posts")
+            val user = async { getUser(userId) }
+            val posts = async {
+                runCatching { getPosts(userId) }.getOrDefault(emptyList())
+            }
+            UserProfile(user.await(), posts.await())
         }
     }
 
