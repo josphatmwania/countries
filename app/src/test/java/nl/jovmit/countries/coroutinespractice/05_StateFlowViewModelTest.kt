@@ -1,28 +1,45 @@
 package nl.jovmit.countries.coroutinespractice
 
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 class StateFlowViewModelTest {
 
-    private suspend fun <T> HttpCall<T>.await(): T {
-        // You can copy your solution from 01_CallbackToCoroutineTest.
-        TODO("Implement await()")
+    private suspend fun <T> HttpCall<T>.await(): T = suspendCancellableCoroutine { continuation ->
+        enqueue(object : Callback<T> {
+            override fun onSuccess(value: T) {
+                continuation.resume(value)
+            }
+
+            override fun onError(error: Throwable) {
+                continuation.resumeWithException(error)
+            }
+        })
+        continuation.invokeOnCancellation { cancel() }
     }
 
-    class UserRepository(
+    inner class UserRepository(
         private val api: UserApi
     ) {
-        suspend fun loadProfile(userId: String): UserProfile {
-            TODO("Load user and posts")
+        suspend fun loadProfile(userId: String): UserProfile = coroutineScope {
+            val user = async { api.getUser(userId).await() }
+            val posts = async { api.getPosts(userId).await() }
+            UserProfile(user.await(), posts.await())
         }
     }
 
@@ -49,7 +66,15 @@ class StateFlowViewModelTest {
          * - loading should be false at the end
          */
         fun loadProfile(userId: String) {
-            TODO("Launch coroutine and update MutableStateFlow")
+            scope.launch {
+                _state.update { it.copy(isLoading = true) }
+                try {
+                    val profile = repository.loadProfile(userId)
+                    _state.update { it.copy(isLoading = false, user = profile.user, posts = profile.posts) }
+                } catch (e: Exception) {
+                    _state.update { it.copy(isLoading = false, errorMessage = e.message) }
+                }
+            }
         }
     }
 
